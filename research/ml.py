@@ -107,9 +107,9 @@ def _signals(mode, p, v1_sig, thr):
     return ml_signals(p, thr) if mode == "ml" else veto_signals(v1_sig, p, thr)
 
 
-def _bt(df, sig, start, end, cfg=ev.COSTS, initial=None):
+def _bt(df, sig, start, end, cfg=ev.COSTS, initial=None, stop=None):
     sub = df.iloc[start:end].reset_index(drop=True)
-    c = cfg.with_(stop_pct=ev.V1_DEFAULT["stop"], **({"initial": initial} if initial is not None else {}))
+    c = cfg.with_(stop_pct=stop or ev.V1_DEFAULT["stop"], **({"initial": initial} if initial is not None else {}))
     return bt.run(sub, sig[start:end], c)
 
 
@@ -129,7 +129,8 @@ def choose_threshold(mode, df, X, y, v1_sig, fit_idx, val_start, val_end):
 
 
 # ------------------------------------------------------------------ walk-forward
-def walk_forward(df, X, y, v1_sig, warm, shuffle_seed=None):
+def walk_forward(df, X, y, v1_sig, warm, shuffle_seed=None, horizon=HORIZON, cfg=ev.COSTS, stop=None,
+                 val_months=3):
     months = ev.month_bounds(df)
     y_fit = y.copy()
     if shuffle_seed is not None:                   # leakage canary
@@ -143,15 +144,17 @@ def walk_forward(df, X, y, v1_sig, warm, shuffle_seed=None):
     for k in range(3, len(months)):
         name, te_start, te_end = months[k]
         te_start = max(te_start, warm)
-        _, va_start, va_end = months[k - 1]
-        train_idx = rows(warm, te_start, y_fit, purge_before=te_start)
+        va_start, va_end = months[max(k - val_months, 1)][1], months[k - 1][2]   # 3 validation months, not 1
+        if te_end - te_start < 2:
+            continue
+        train_idx = rows(warm, te_start, y_fit, purge_before=te_start, horizon=horizon)
         if len(train_idx) < 200 or len(np.unique(y_fit[train_idx])) < 2:
             continue
-        inner_idx = rows(warm, va_start, y_fit, purge_before=va_start)
+        inner_idx = rows(warm, va_start, y_fit, purge_before=va_start, horizon=horizon)
         thr = {mode: choose_threshold(mode, df, X, y_fit, v1_sig, inner_idx, va_start, va_end) for mode in ("ml", "veto")}
         m = model().fit(X.iloc[train_idx], y_fit[train_idx])
         probs[te_start:te_end] = m.predict_proba(X.iloc[te_start:te_end])[:, 1]
-        test_known = rows(te_start, te_end, y)
+        test_known = rows(te_start, te_end, y, horizon=horizon)
         auc = (roc_auc_score(y[test_known], probs[test_known])
                if len(test_known) and len(np.unique(y[test_known])) == 2 else np.nan)
         fold = {"test_month": name, "auc": auc, "train_rows": int(len(train_idx)), "thresholds": thr}

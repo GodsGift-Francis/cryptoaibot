@@ -85,11 +85,12 @@ def random_benchmark(df, start, n_entries, hold_bars, p, seeds=300):
                      for s in range(seeds)])
 
 
-def select(df, scores, start, end, min_trades=3):
+def select(df, scores, start, end, min_trades=3, grid=None, cfg=COSTS):
+    grid = grid or GRID
     best, best_key = None, None
-    for b, s, stop in itertools.product(GRID["buy"], GRID["sell"], GRID["stop"]):
+    for b, s, stop in itertools.product(grid["buy"], grid["sell"], grid["stop"]):
         p = {"buy": b, "sell": s, "stop": stop}
-        m = v1_run(df, scores, p, start=start, end=end).metrics
+        m = v1_run(df, scores, p, cfg=cfg, start=start, end=end).metrics
         if m["trades"] < min_trades:
             continue
         key = (m["sharpe"], m["total_return"])
@@ -98,7 +99,7 @@ def select(df, scores, start, end, min_trades=3):
     return best or dict(V1_DEFAULT)
 
 
-def walk_forward(df, scores, warm):
+def walk_forward(df, scores, warm, grid=None, cfg=COSTS):
     """3-month train / 1-month test, rolling monthly. OOS months are compounded."""
     months = month_bounds(df)
     folds, equity, trades = [], 1000.0, 0
@@ -106,9 +107,12 @@ def walk_forward(df, scores, warm):
     for k in range(3, len(months)):
         tr_start = max(months[k - 3][1], warm)
         te_name, te_start, te_end = months[k]
-        p = select(df, scores, tr_start, months[k - 1][2])
-        r = v1_run(df, scores, p, start=max(te_start, warm), end=te_end, initial=equity)
-        d = v1_run(df, scores, V1_DEFAULT, start=max(te_start, warm), end=te_end, initial=1000.0)
+        # slower timeframes have few bars per month: skip folds without enough data to train or test on
+        if months[k - 1][2] - tr_start < 20 or te_end - max(te_start, warm) < 2:
+            continue
+        p = select(df, scores, tr_start, months[k - 1][2], grid=grid, cfg=cfg)
+        r = v1_run(df, scores, p, cfg=cfg, start=max(te_start, warm), end=te_end, initial=equity)
+        d = v1_run(df, scores, V1_DEFAULT, cfg=cfg, start=max(te_start, warm), end=te_end, initial=1000.0)
         folds.append({"test_month": te_name, "params": p, **{k2: r.metrics[k2] for k2 in ("total_return", "max_drawdown", "trades")},
                       "v1_default_return": d.metrics["total_return"]})
         equity = r.metrics["final_equity"]

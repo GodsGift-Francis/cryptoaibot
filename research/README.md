@@ -52,3 +52,17 @@ ML_MODEL_SHA256=<from ML_REPORT.md>
 The engine loads the model only if the hash matches, the features match, and the installed scikit-learn equals the
 training version; otherwise it refuses to start (fail closed). Signals are tagged `…+ai` with the model hash.
 LLM-based signals are deliberately not backtested: a language model may already know historical prices.
+
+## Timeframe / horizon sweep (`sweep.py`)
+```bash
+python -m research.sweep            # uses the 1h data already downloaded -> research/out/SWEEP_REPORT.md
+```
+1h candles proved unpredictable (AUC ~0.52 with and without order flow, and costs on hundreds of trades
+swamp that edge). This runs the same pipeline on **1h / 4h / 1d** candles and **12h / 24h / 72h** horizons,
+for the rules strategy and both AI modes. Stops scale with bar size and Sharpe is annualised per timeframe.
+
+**Multiple testing:** trying ~12 variants guarantees the best one looks good by luck. The best variant is
+therefore compared against the best of the SAME NUMBER of random strategies (95th percentile, on both
+Sharpe and return). Only if it beats both bars is it labelled CANDIDATE — which is still not a GO: a
+candidate must then be re-run on its own through `research.evaluate` / `research.ml`, pass those gates,
+and pass the one-shot holdout before any forward test.

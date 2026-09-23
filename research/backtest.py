@@ -117,8 +117,15 @@ def run(df: pd.DataFrame, signals, cfg: BTConfig = BTConfig()) -> BTResult:
     return res
 
 
+EMPTY_METRICS = {"total_return": 0.0, "cagr": 0.0, "max_drawdown": 0.0, "sharpe": 0.0, "sortino": 0.0,
+                 "calmar": 0.0, "trades": 0, "win_rate": 0.0, "profit_factor": 0.0, "avg_trade_return": 0.0,
+                 "exposure": 0.0, "fees_paid": 0.0, "final_equity": 0.0}
+
+
 def metrics(equity: pd.Series, trades: pd.DataFrame, cfg: BTConfig, fees_paid: float = 0.0) -> dict:
     eq = equity.to_numpy(float)
+    if len(eq) == 0:                      # empty window (e.g. a fold shorter than the indicator warmup)
+        return {**EMPTY_METRICS, "final_equity": cfg.initial}
     prev = eq[:-1]
     rets = np.divide(np.diff(eq), prev, out=np.zeros(len(prev)), where=prev > 0) if len(eq) > 1 else np.array([0.0])
     years = max(len(eq) / cfg.bars_per_year, 1e-9)

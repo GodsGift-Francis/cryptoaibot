@@ -113,6 +113,32 @@ def download(symbol: str, months: int = 12, interval: str = "1h", out_dir: str =
     return path
 
 
+RESAMPLE = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum",
+            "quote_volume": "sum", "trades": "sum", "taker_base": "sum"}
+
+
+def _rule(rule: str) -> str:
+    """pandas deprecated lowercase 'd'; accept '1d' from users and normalise it."""
+    return rule.replace("d", "D") if rule.endswith("d") else rule
+
+
+def resample(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """1h candles -> 4h / 1d candles. Sums order flow, keeps OHLC semantics, drops partial buckets."""
+    rule = _rule(rule)
+    out = (df.set_index("timestamp")
+             .resample(rule, label="left", closed="left")
+             .agg({k: v for k, v in RESAMPLE.items() if k in df.columns})
+             .dropna(subset=["open", "close"]))
+    expected = int(pd.Timedelta(rule) / pd.Timedelta("1h"))
+    counts = df.set_index("timestamp").resample(rule, label="left", closed="left").size()
+    out = out[counts.reindex(out.index).fillna(0) == expected]        # no half-formed final bucket
+    return out.reset_index()
+
+
+def bars_per_year(rule: str) -> float:
+    return 365 * 24 / (pd.Timedelta(_rule(rule)) / pd.Timedelta("1h"))
+
+
 def load(symbol: str, interval: str = "1h", data_dir: str = DATA_DIR) -> pd.DataFrame:
     df = pd.read_csv(os.path.join(data_dir, f"{symbol}-{interval}.csv"))
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
