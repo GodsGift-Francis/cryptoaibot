@@ -24,6 +24,12 @@ and re-verifies account state over REST after every connect, restart or anomaly.
 ## Quick start — PAPER mode (local)
 Requirements: Python 3.11+, PHP 8.3+, Composer. No Node.js.
 
+One command creates both `.env` files with a shared token and prepares the database:
+```bash
+python scripts/setup_local.py      # then follow the commands it prints
+```
+Or do it by hand:
+
 ```bash
 # 1. shared secret
 TOKEN=$(python3 -c "import secrets;print(secrets.token_urlsafe(48))")
