@@ -108,7 +108,7 @@ def download(symbol: str, months: int = 12, interval: str = "1h", out_dir: str =
     path = os.path.join(out_dir, f"{symbol}-{interval}.csv")
     data.to_csv(path, index=False)
     manifest["sha256_csv"] = hashlib.sha256(open(path, "rb").read()).hexdigest()
-    json.dump(manifest, open(os.path.join(out_dir, f"{symbol}-{interval}.manifest.json"), "w"), indent=2)
+    json.dump(manifest, open(os.path.join(out_dir, f"{symbol}-{interval}.manifest.json"), "w", encoding="utf-8"), indent=2)
     print(f"  -> {path}: {len(data)} candles {manifest['first']} .. {manifest['last']}; validation: {manifest['validation']}")
     return path
 

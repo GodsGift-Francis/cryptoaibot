@@ -233,8 +233,8 @@ def evaluate(symbol="BTCUSDT", loader=rdata.load, out_dir=ev.OUT_DIR, seeds=200)
            "modes": results, "v1_default_oos": {**v1_oos.metrics, "monthly_sharpe": v1_oos_sharpe},
            "competitors_oos": comp_oos, "best_competitor": best_comp, "chosen_mode": chosen, "artifact": artifact,
            "verdict": f"GO ({chosen}): run the one-shot holdout" if chosen else "NO-GO"}
-    json.dump(out, open(os.path.join(out_dir, "ml_results.json"), "w"), indent=2, default=str)
-    open(os.path.join(out_dir, "ML_REPORT.md"), "w").write(report(out))
+    json.dump(out, open(os.path.join(out_dir, "ml_results.json"), "w", encoding="utf-8"), indent=2, default=str)
+    open(os.path.join(out_dir, "ML_REPORT.md"), "w", encoding="utf-8").write(report(out))
     return out
 
 
@@ -250,7 +250,7 @@ def train_final(dev, X, y, warm, mode, thr, out_dir) -> dict:
     joblib.dump({"model": m, "meta": meta}, path)
     meta["sha256"] = hashlib.sha256(open(path, "rb").read()).hexdigest()
     meta["path"] = path
-    json.dump(meta, open(os.path.join(out_dir, "model", "model.meta.json"), "w"), indent=2)
+    json.dump(meta, open(os.path.join(out_dir, "model", "model.meta.json"), "w", encoding="utf-8"), indent=2)
     return meta
 
 
@@ -259,11 +259,11 @@ def holdout(symbol="BTCUSDT", loader=rdata.load, out_dir=ev.OUT_DIR, force=False
     lock = os.path.join(out_dir, "ML_HOLDOUT_LOCK.json")
     if not os.path.exists(res_path):
         raise SystemExit("run `python -m research.ml` first")
-    dev_res = json.load(open(res_path))
+    dev_res = json.load(open(res_path, encoding="utf-8"))
     if not dev_res.get("artifact"):
         raise SystemExit("no model passed the development gates; nothing to test on the holdout")
     if os.path.exists(lock) and not force:
-        raise SystemExit(f"ML holdout already used ({json.load(open(lock))['used_at']}).")
+        raise SystemExit(f"ML holdout already used ({json.load(open(lock, encoding='utf-8'))['used_at']}).")
     art = joblib.load(dev_res["artifact"]["path"])
     meta = art["meta"]
     df_all = loader(symbol)
@@ -280,8 +280,8 @@ def holdout(symbol="BTCUSDT", loader=rdata.load, out_dir=ev.OUT_DIR, force=False
            "model_sha256": dev_res["artifact"]["sha256"], "holdout": r.metrics, "v1_default": v1.metrics,
            "buy_hold": bh.metrics, "passed": passed,
            "verdict": "GO: forward-test in PAPER/TESTNET" if passed else "NO-GO"}
-    json.dump(res, open(lock, "w"), indent=2, default=str)
-    with open(os.path.join(out_dir, "ML_REPORT.md"), "a") as f:
+    json.dump(res, open(lock, "w", encoding="utf-8"), indent=2, default=str)
+    with open(os.path.join(out_dir, "ML_REPORT.md"), "a", encoding="utf-8") as f:
         f.write(f"\n## Holdout (one shot, {res['used_at'][:10]}{' FORCED' if force else ''})\n\n"
                 f"| | AI ({meta['mode']}) | V1 default | Buy & hold |\n|---|---|---|---|\n"
                 f"| Return | {ev.pct(r.metrics['total_return'])} | {ev.pct(v1.metrics['total_return'])} | {ev.pct(bh.metrics['total_return'])} |\n"
@@ -330,4 +330,4 @@ if __name__ == "__main__":
         print(json.dumps(holdout(a.symbol.upper(), force=a.force), indent=2, default=str))
     else:
         evaluate(a.symbol.upper())
-        print(open(os.path.join(ev.OUT_DIR, "ML_REPORT.md")).read())
+        print(open(os.path.join(ev.OUT_DIR, "ML_REPORT.md"), encoding="utf-8").read())

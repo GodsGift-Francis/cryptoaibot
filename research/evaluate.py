@@ -227,8 +227,8 @@ def evaluate(symbols=("BTCUSDT", "ETHUSDT", "SOLUSDT"), loader=rdata.load, out_d
         "competitors_oos": comp_oos, "chosen_full_allocation": full_alloc.metrics,
         "gates": gates, "verdict": "GO: run the one-shot holdout" if all(gates.values()) else "NO-GO",
     }
-    json.dump(result, open(os.path.join(out_dir, "dev_results.json"), "w"), indent=2, default=str)
-    open(os.path.join(out_dir, "REPORT.md"), "w").write(report(result))
+    json.dump(result, open(os.path.join(out_dir, "dev_results.json"), "w", encoding="utf-8"), indent=2, default=str)
+    open(os.path.join(out_dir, "REPORT.md"), "w", encoding="utf-8").write(report(result))
     return result
 
 
@@ -238,9 +238,9 @@ def holdout(symbol="BTCUSDT", loader=rdata.load, out_dir=OUT_DIR, force=False) -
     lock = os.path.join(out_dir, "HOLDOUT_LOCK.json")
     if not os.path.exists(dev_path):
         raise SystemExit("run `python -m research.evaluate` first")
-    dev_res = json.load(open(dev_path))
+    dev_res = json.load(open(dev_path, encoding="utf-8"))
     if os.path.exists(lock) and not force:
-        raise SystemExit(f"holdout already used ({json.load(open(lock))['used_at']}). Re-running it on tuned params "
+        raise SystemExit(f"holdout already used ({json.load(open(lock, encoding='utf-8'))['used_at']}). Re-running it on tuned params "
                          "turns it into training data. Pass --force only if you accept that; it is recorded.")
     df_all = loader(symbol)
     dev, hold, _ = split(df_all)
@@ -254,8 +254,8 @@ def holdout(symbol="BTCUSDT", loader=rdata.load, out_dir=OUT_DIR, force=False) -
            "params_hash": hashlib.sha256(json.dumps(p, sort_keys=True).encode()).hexdigest()[:12],
            "holdout": r.metrics, "buy_hold": bh.metrics, "passed": passed,
            "verdict": "GO: forward-test in PAPER/TESTNET" if passed and dev_res["verdict"].startswith("GO") else "NO-GO"}
-    json.dump(res, open(lock, "w"), indent=2, default=str)
-    with open(os.path.join(out_dir, "REPORT.md"), "a") as f:
+    json.dump(res, open(lock, "w", encoding="utf-8"), indent=2, default=str)
+    with open(os.path.join(out_dir, "REPORT.md"), "a", encoding="utf-8") as f:
         f.write(f"\n## Holdout (one shot, {res['used_at'][:10]}{' FORCED' if force else ''})\n\n"
                 f"| | Chosen config | Buy & hold |\n|---|---|---|\n"
                 f"| Return | {pct(r.metrics['total_return'])} | {pct(bh.metrics['total_return'])} |\n"
@@ -322,4 +322,4 @@ if __name__ == "__main__":
         print(json.dumps(holdout(syms[0], force=a.force), indent=2, default=str))
     else:
         res = evaluate(syms)
-        print(open(os.path.join(OUT_DIR, "REPORT.md")).read())
+        print(open(os.path.join(OUT_DIR, "REPORT.md"), encoding="utf-8").read())

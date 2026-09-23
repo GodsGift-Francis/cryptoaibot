@@ -55,6 +55,18 @@ def run(coro):
     return asyncio.new_event_loop().run_until_complete(coro)
 
 
+async def until(predicate, timeout=10.0, interval=0.01):
+    """Wait for a condition instead of guessing a sleep: slow machines (Windows CI, laptops) must not flake."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        value = predicate()
+        if value:
+            return value
+        await asyncio.sleep(interval)
+    raise AssertionError(f"condition not met within {timeout}s")
+
+
 def make_stream(clock, sockets, events, states, **kw):
     it = iter(sockets)
 
@@ -71,7 +83,7 @@ def make_stream(clock, sockets, events, states, **kw):
         await asyncio.sleep(0)
 
     return BinanceUserDataStream("wss://ws-api.testnet.binance.vision/ws-api/v3", "k" * 64, "s" * 64, clock,
-                                 on_event, on_state, connect=connect, ping_interval=0.05, response_timeout=0.05,
+                                 on_event, on_state, connect=connect, ping_interval=0.05, response_timeout=0.2,
                                  sleep=no_sleep, **kw)
 
 
@@ -82,9 +94,9 @@ def test_subscribes_with_valid_signature_and_delivers_wrapped_events(clock):
     async def scenario():
         stream = make_stream(clock, [sock], events, states)
         task = asyncio.create_task(stream.run_forever())
-        await asyncio.sleep(0.02)
+        await until(lambda: [s for s, _ in states] == ["CONNECTING", "SUBSCRIBED"])
         await sock.push({"subscriptionId": 0, "event": {"e": "outboundAccountPosition", "E": 1, "u": 1, "B": []}})
-        await asyncio.sleep(0.02)
+        await until(lambda: events)
         stream.stop()
         await sock.kill()
         await asyncio.wait_for(task, 1)
@@ -101,7 +113,7 @@ def test_missing_ping_response_is_stale_and_triggers_reconnect(clock):
     async def scenario():
         stream = make_stream(clock, [dead, alive], events, states)
         task = asyncio.create_task(stream.run_forever())
-        await asyncio.sleep(0.4)
+        await until(lambda: [s for s, _ in states][:4] == ["CONNECTING", "SUBSCRIBED", "DISCONNECTED", "CONNECTING"])
         stream.stop()
         await alive.kill()
         await asyncio.wait_for(task, 1)
@@ -119,9 +131,9 @@ def test_server_shutdown_forces_reconnect_and_subscription_failure_is_reported(c
     async def scenario():
         stream = make_stream(clock, [first, rejected, good], events, states)
         task = asyncio.create_task(stream.run_forever())
-        await asyncio.sleep(0.02)
+        await until(lambda: [s for s, _ in states] == ["CONNECTING", "SUBSCRIBED"])
         await first.push({"subscriptionId": 0, "event": {"e": "serverShutdown", "E": 1}})
-        await asyncio.sleep(0.2)
+        await until(lambda: [s for s, _ in states].count("SUBSCRIBED") == 2)
         stream.stop()
         await good.kill()
         await asyncio.wait_for(task, 1)
@@ -155,8 +167,8 @@ def test_worker_state_machine_disconnect_reconnect_reconcile(testnet):
         async def no_sleep(_):
             await asyncio.sleep(0)
         return BinanceUserDataStream("wss://ws-api.testnet.binance.vision/ws-api/v3", "k" * 64, "s" * 64,
-                                     testnet.clock, on_event, on_state, connect=connect, ping_interval=0.05,
-                                     response_timeout=0.05, sleep=no_sleep)
+                                     testnet.clock, on_event, on_state, connect=connect, ping_interval=1.0,
+                                     response_timeout=2.0, sleep=no_sleep)
 
     worker = ReconciliationWorker(testnet.s, stream_factory=factory)
     worker.TOUCH_SECONDS = 3600
@@ -164,23 +176,24 @@ def test_worker_state_machine_disconnect_reconnect_reconcile(testnet):
 
     async def scenario():
         task = asyncio.create_task(worker.run())
-        await asyncio.sleep(0.1)
-        observed["after_subscribe"] = testnet.store.get_recon_state("test-bot").status
+        observed["after_subscribe"] = await until(
+            lambda: testnet.store.get_recon_state("test-bot").status is R.HEALTHY or None)
         await first.push(testnet.rest.execute(o.client_order_id, D("10")))       # live partial fill via WS
-        await asyncio.sleep(0.1)
-        observed["after_event"] = testnet.store.get_order(o.client_order_id).status
+        observed["after_event"] = await until(
+            lambda: testnet.store.get_order(o.client_order_id).status is S.PARTIALLY_FILLED or None)
+        testnet.s.reconciliation.set_state(R.DEGRADED, "about to drop")          # marker we must see overwritten
         await first.kill()                                                       # disconnect ...
         testnet.rest.execute(o.client_order_id, D("23.33333"))                   # ... order completes while blind
-        await asyncio.sleep(0.3)
-        observed["after_reconnect"] = testnet.store.get_recon_state("test-bot").status
+        observed["after_reconnect"] = await until(
+            lambda: testnet.store.get_recon_state("test-bot").status is R.HEALTHY or None)
         worker.stream.stop()
         await second.kill()
         await asyncio.wait_for(task, 2)
 
     run(scenario())
-    assert observed["after_subscribe"] == R.HEALTHY
-    assert observed["after_event"] == S.PARTIALLY_FILLED
-    assert observed["after_reconnect"] == R.HEALTHY
+    assert observed["after_subscribe"] is True                                   # subscribe -> reconcile -> HEALTHY
+    assert observed["after_event"] is True                                       # WS fill applied live
+    assert observed["after_reconnect"] is True                                   # reconnect re-reconciled to HEALTHY
     order = testnet.store.get_order(o.client_order_id)
     assert order.status == S.FILLED and testnet.s.orders.fill_quantity(order) == D("33.33333")
     st = testnet.store.get_recon_state("test-bot")

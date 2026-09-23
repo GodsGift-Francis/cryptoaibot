@@ -87,3 +87,29 @@ def test_dev_scores_never_see_holdout_candles():
     full = st.v1_scores(df, cache=False)
     only_dev = st.v1_scores(dev, cache=False)
     np.testing.assert_array_equal(full[: len(dev)], only_dev)
+
+
+def test_research_never_opens_text_files_with_the_platform_default_encoding(tmp_path, monkeypatch):
+    """On Windows the default is cp1252, which cannot write the '->' and '-' characters in the reports.
+    Every text open() made by the research package must state encoding explicitly."""
+    import builtins
+    import inspect
+
+    real_open = builtins.open
+    offenders = []
+
+    def guarded(file, mode="r", *a, **kw):
+        if "b" not in mode and kw.get("encoding") is None:
+            caller = inspect.currentframe().f_back
+            if caller and str(caller.f_globals.get("__name__", "")).startswith("research"):
+                offenders.append(f"{caller.f_code.co_filename}:{caller.f_lineno}")
+        return real_open(file, mode, *a, **kw)
+
+    monkeypatch.setattr(st, "CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(builtins, "open", guarded)
+    ev.evaluate(("BTCUSDT",), loader=synth, out_dir=str(tmp_path), seeds=5)
+    ev.holdout("BTCUSDT", loader=synth, out_dir=str(tmp_path))
+    monkeypatch.undo()
+    assert not offenders, "default-encoding text opens: " + ", ".join(offenders)
+    report = (tmp_path / "REPORT.md").read_text(encoding="utf-8")
+    assert "→" in report and "—" in report

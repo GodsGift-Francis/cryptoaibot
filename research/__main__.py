@@ -17,4 +17,4 @@ if not a.skip_download:
     for s in syms:
         data.download(s, a.months)
 evaluate.evaluate(syms)
-print(open(os.path.join(evaluate.OUT_DIR, "REPORT.md")).read())
+print(open(os.path.join(evaluate.OUT_DIR, "REPORT.md"), encoding="utf-8").read())
