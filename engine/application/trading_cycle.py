@@ -95,6 +95,13 @@ class TradingCycle:
             res.action_taken = f"BLOCKED: market data invalid ({snap.reason})"
             return res
         self.store.kv_set(f"health:{self.bot}:last_market_data_at", self.clock.now().isoformat())
+        if snap.headlines:
+            # Archive what we can see NOW. News research needs point-in-time data and no free archive
+            # provides it, so the only way to ever have an honest dataset is to start recording today.
+            try:
+                self.store.record_news(snap.headlines, self.clock.now())
+            except Exception:  # noqa: BLE001 - archiving must never block trading
+                log.warning("news archiving failed", exc_info=True)
         res.price, res.df = float(snap.mark_price), snap.candles
         rules = self.executor.symbol_rules(self.cfg.SYMBOL)
         position = self.positions.mark(self.cfg.SYMBOL, snap.mark_price)

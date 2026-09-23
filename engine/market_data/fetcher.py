@@ -33,6 +33,7 @@ class MarketSnapshot:
     recent_candles: list | None = None         # [(close_time, low)] for the last two raw candles
     market_data: dict | None = None
     sentiment: dict | None = None
+    headlines: list | None = None      # raw items, archived point-in-time for future news research
     fetched_at: object = None
 
     def stop_check_low(self, opened_at) -> Decimal | None:
@@ -82,14 +83,15 @@ class MarketDataService:
         recent = [((pd.to_datetime(t, utc=True).to_pydatetime() + tf), Decimal(str(float(low))))
                   for t, low in zip(raw["timestamp"].iloc[-2:], raw["low"].iloc[-2:])]
         market_data = headlines_sent = None
+        headlines = []
         if with_context:
             market_data = self._global()
-            headlines = self._news()
+            headlines = self._news() or []
             headlines_sent = sentiment_mod.score_headlines(headlines) if headlines else None
         return MarketSnapshot(
             valid=True, reason="ok", candles=frame, candle_ts=evaluated_open.isoformat(),
             mark_price=Decimal(str(float(raw["close"].iloc[-1]))),
             signal_price=Decimal(str(float(frame["close"].iloc[-1]))),
             recent_candles=recent,
-            market_data=market_data, sentiment=headlines_sent, fetched_at=now,
+            market_data=market_data, sentiment=headlines_sent, headlines=headlines, fetched_at=now,
         )

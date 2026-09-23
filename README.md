@@ -19,7 +19,8 @@ and re-verifies account state over REST after every connect, restart or anomaly.
 * `docs/RUNBOOK.md` — operations, incidents, PAPER → TESTNET, before-LIVE checklist
 * `docs/TESTING.md` — test suites
 * `deploy/README.md` — Ubuntu deployment (nginx, PHP-FPM, systemd)
-* `research/README.md` — algorithm research pipeline (backtester, walk-forward, gates)
+* `research/README.md` — algorithm research pipeline (backtester, walk-forward, sweep, overlay, gates)
+* `docs/NEWS_AND_SENTIMENT.md` — what news/social signals can and cannot prove, and the archive that enables it
 
 ## Quick start — PAPER mode (local)
 Requirements: Python 3.11+, PHP 8.3+, Composer. No Node.js.
@@ -65,5 +66,5 @@ python -m workers.trading_worker                     # JSON logs; runs a cycle e
 * Binance keys: trade permission only, **never withdrawal**, IP-restricted. Secrets are redacted from logs.
 
 ## Tests
-104 Python tests (unit + integration against a simulated Binance). Laravel feature tests are included and
+126 Python tests (unit + integration against a simulated Binance). Laravel feature tests are included and
 must be run where Composer can install dependencies — see `docs/TESTING.md`.

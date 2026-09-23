@@ -66,3 +66,29 @@ therefore compared against the best of the SAME NUMBER of random strategies (95t
 Sharpe and return). Only if it beats both bars is it labelled CANDIDATE — which is still not a GO: a
 candidate must then be re-run on its own through `research.evaluate` / `research.ml`, pass those gates,
 and pass the one-shot holdout before any forward test.
+
+## Drawdown-controlled exposure (`overlay.py`)
+```bash
+python -m research.overlay          # uses the 1h data already downloaded -> research/out/OVERLAY_REPORT.md
+```
+After five tests found no exploitable edge in BTC direction, this stops trying to beat the market and
+targets what the evidence supports: buy-and-hold made +95% with a -50% drawdown, so keeping most of the
+upside with materially less drawdown is both useful and achievable.
+
+Rule: hold BTC while price holds above a moving average; exit after N consecutive closes below it; re-enter
+on the same confirmation. No stop-loss — the trend exit is the risk control. Parameters are re-chosen each
+month walk-forward, judged by Calmar (return per unit of drawdown).
+
+**The control that matters:** the rule is compared against strategies that are flat for the SAME share of
+time with the SAME number of switches, but at RANDOM moments. If it cannot beat the 95th percentile of
+those, its exits are timing nothing and the same result comes from simply holding less.
+
+Gates: keep >= 70% of buy-and-hold's return (or lose less than it in down periods), cut drawdown to <= 60%
+of buy-and-hold's, better Calmar than holding, capture holds up out-of-sample, exit timing beats the random
+control, still positive at 2x costs.
+
+## News and sentiment
+See `docs/NEWS_AND_SENTIMENT.md`. Short version: news likely matters, but it cannot be backtested honestly
+without point-in-time data, and an LLM asked about past headlines already knows how they turned out. The
+engine therefore archives every headline it sees, with the timestamp it saw it, from now on — running the
+bot in PAPER builds that dataset for free.

@@ -15,6 +15,7 @@ Idempotency is enforced by UNIQUE constraints, never by in-memory sets:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -101,6 +102,19 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox(status, next_attempt_at)
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);
 -- Leases give one process exclusive ownership of a job (e.g. outbox delivery) with expiry-based takeover.
 CREATE TABLE IF NOT EXISTS leases (name TEXT PRIMARY KEY, owner TEXT NOT NULL, expires_at TEXT NOT NULL);
+-- Point-in-time news archive. News CANNOT be backtested without knowing exactly when each headline was
+-- visible, and no free archive provides that. Recording it from now on is the only way to ever get a
+-- dataset that is honest about timing. `seen_at` is when WE saw it, which is what a live bot would know.
+CREATE TABLE IF NOT EXISTS news_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seen_at TEXT NOT NULL,
+    published_at TEXT,
+    source TEXT,
+    title TEXT NOT NULL,
+    sentiment REAL,
+    item_key TEXT NOT NULL UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_news_seen ON news_snapshots(seen_at);
 """
 
 
@@ -459,6 +473,29 @@ class Store:
             conn.execute("DELETE FROM leases WHERE name=? AND owner=?", (name, owner))
 
     # ------------------------------------------------------------------ kv
+    # ------------------------------------------------------------------ news archive
+    def record_news(self, items: list[dict], seen_at) -> int:
+        """Store headlines we can see right now. Deduplicated by source+title+published, so repeated
+        cycles do not inflate the archive. Returns how many were new."""
+        import sentiment as sentiment_mod
+        new = 0
+        with self.transaction() as conn:
+            for item in items:
+                title = (item.get("title") or "").strip()
+                if not title:
+                    continue
+                key = hashlib.sha256(f"{item.get('source','')}|{item.get('published','')}|{title}".encode()).hexdigest()
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO news_snapshots(seen_at, published_at, source, title, sentiment, item_key) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (_iso(seen_at), item.get("published"), item.get("source"), title[:500],
+                     sentiment_mod.score_text(title), key))
+                new += cur.rowcount
+        return new
+
+    def news_count(self) -> int:
+        return self._query("SELECT COUNT(*) AS n FROM news_snapshots")[0]["n"]
+
     def kv_get(self, key: str, default=None):
         rows = self._query("SELECT value_json FROM kv WHERE key=?", (key,))
         return json.loads(rows[0]["value_json"]) if rows else default
