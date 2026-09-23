@@ -1,0 +1,2 @@
+<?php
+return ['default'=>env('CACHE_STORE','file'),'stores'=>['array'=>['driver'=>'array','serialize'=>false],'file'=>['driver'=>'file','path'=>storage_path('framework/cache/data')],'database'=>['driver'=>'database','connection'=>env('DB_CONNECTION','sqlite'),'table'=>'cache','lock_connection'=>env('DB_CONNECTION','sqlite'),'lock_table'=>'cache_locks'],'redis'=>['driver'=>'redis','connection'=>'default']],'prefix'=>env('CACHE_PREFIX',strtolower(preg_replace('/[^A-Za-z0-9_]/','_',env('APP_NAME','laravel'))).'_cache_')];

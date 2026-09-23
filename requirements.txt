@@ -1,0 +1,13 @@
+# Engine runtime
+ccxt>=4.5.0          # REST: signs percent-encoded payloads as Binance requires since 2026-01-15
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+websockets>=13.0     # Binance WebSocket API user data stream
+vaderSentiment>=3.3.2
+feedparser>=6.0.10
+# Transition dashboard only (read-only)
+streamlit>=1.35.0
+plotly>=5.20.0
+scikit-learn>=1.5    # AI layer; the engine refuses a model trained with a different version

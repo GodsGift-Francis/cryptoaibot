@@ -1,0 +1,3 @@
+<?php
+use Illuminate\Database\Migrations\Migration;use Illuminate\Database\Schema\Blueprint;use Illuminate\Support\Facades\Schema;
+return new class extends Migration {public function up():void{Schema::create('signals',function(Blueprint $t){$t->id();$t->foreignId('bot_instance_id')->constrained()->cascadeOnDelete();$t->string('symbol');$t->string('action');$t->decimal('score',12,4);$t->decimal('price',24,10)->nullable();$t->json('reasons')->nullable();$t->string('mode')->nullable();$t->timestamp('occurred_at');$t->timestamps();});}public function down():void{Schema::dropIfExists('signals');}};

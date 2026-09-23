@@ -1,0 +1,51 @@
+# Public server: dashboard + Telegram webhook ONLY. The internal engine API is not exposed here.
+server {
+    listen 80;
+    server_name your-domain.example;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.example;
+    # ssl_certificate / ssl_certificate_key: e.g. from certbot
+    root /opt/crypto-bot/laravel/public;
+    index index.php;
+
+    add_header X-Frame-Options DENY always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    # Defense in depth: the engine API must never be reachable from the internet.
+    location ^~ /api/internal/ { return 404; }
+
+    location / { try_files $uri $uri/ /index.php?$query_string; }
+    location ~ \.php$ {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+    location ~ /\.(?!well-known) { deny all; }
+}
+
+# Internal server: localhost only, used by the Python workers (CONTROL_PLANE_URL=http://127.0.0.1:8080).
+server {
+    listen 127.0.0.1:8080;
+    server_name 127.0.0.1;
+    root /opt/crypto-bot/laravel/public;
+
+    location ^~ /api/internal/v1/ {
+        allow 127.0.0.1;
+        deny all;
+        try_files $uri /index.php?$query_string;
+    }
+    location = /index.php {
+        allow 127.0.0.1;
+        deny all;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+    location / { return 404; }
+}

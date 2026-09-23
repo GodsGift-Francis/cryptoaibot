@@ -1,0 +1,84 @@
+You are the senior software engineer responsible for restructuring this cryptocurrency trading bot into a production-grade, testable architecture.
+
+READ THESE FILES FIRST:
+- README.md
+- AI_RESTRUCTURE_AND_V1_1_SPEC.md
+- config.py
+- paper_trader.py
+- run_bot.py
+- engine/execution/*
+- engine/control_plane.py
+- risk_manager.py
+- strategy.py
+- data_fetcher.py
+- all Laravel routes/controllers/models/migrations
+- all tests
+
+DO NOT start coding until you understand the existing data flow.
+
+PRIMARY OBJECTIVE:
+Restructure the existing project correctly without changing the trading strategy unless required for a documented correctness/safety fix. Implement V1.1 execution lifecycle, Binance order reconciliation, authenticated user-data WebSocket handling, explicit Order/Fill/Position domain models, idempotency, restart recovery, fail-closed control-plane behavior, and a secure Laravel control plane.
+
+TARGET ARCHITECTURE:
+- Python remains the trading engine.
+- Laravel 13 remains the control plane/dashboard/API.
+- Binance Spot is the first exchange adapter.
+- Telegram remains an operator interface.
+- No Node.js production dependency.
+- PAPER is the default.
+- TESTNET must work before LIVE.
+- LIVE requires an explicit configuration gate.
+
+CRITICAL RULE:
+Never assume a REST order submission response means FILLED. Model the lifecycle from intent -> submission -> acknowledgement -> partial fills -> fill/terminal state. WebSocket events must be normalized, persisted idempotently, and reconciled against Binance REST/API state after disconnects or restarts.
+
+REQUIRED SAFETY BEHAVIOR:
+- Laravel control plane unavailable => fail closed.
+- Bot paused => no new entries.
+- Emergency stop => no new entries.
+- Reconciliation unhealthy => no new entries.
+- WebSocket disconnected/stale => enter degraded/reconciliation state.
+- Ambiguous order submission => query exchange before retrying.
+- Terminal order => cannot transition backward.
+- Duplicate exchange event => no duplicate fill/P&L.
+- Never log API secrets.
+
+BINANCE:
+Use the current Binance Spot WebSocket API/user-data-stream documentation when implementing authentication and subscriptions. Do not copy an obsolete listen-key implementation without checking the current API. Use REST/API queries for authoritative recovery reconciliation.
+
+IMPLEMENTATION ORDER:
+1. Inventory and dependency map.
+2. Domain models/state machines.
+3. Execution boundary.
+4. Persistence/API.
+5. Binance WebSocket event ingestion.
+6. Reconciliation service.
+7. Split trading and reconciliation workers.
+8. Dashboard authentication/authorization/audit.
+9. Tests.
+10. Deployment/runbook update.
+11. Final repository audit.
+
+DO NOT:
+- invent a new trading strategy;
+- silently change risk parameters;
+- put exchange calls throughout strategy code;
+- leave direct order submission outside the execution service;
+- let dashboard controls be public without authentication;
+- use in-memory-only idempotency;
+- continue trading when exchange state is unknown;
+- add Node.js just for convenience.
+
+DELIVERABLE:
+Modify the repository, not merely describe changes. Then produce:
+- architecture summary;
+- changed-file summary;
+- schema summary;
+- API summary;
+- WebSocket/reconciliation summary;
+- tests and results;
+- deployment commands;
+- unresolved risks;
+- exact PAPER-mode startup instructions.
+
+Before finishing, grep/search the repository for all direct order submissions, all uses of deprecated USE_TESTNET, all position mutations, unauthenticated dashboard controls, and any path that can trade without healthy reconciliation.

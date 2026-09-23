@@ -1,0 +1,27 @@
+[Unit]
+Description=Crypto Bot - trading worker (strategy -> risk -> OrderService)
+After=network-online.target php8.3-fpm.service nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cryptobot
+Group=cryptobot
+WorkingDirectory=/opt/crypto-bot
+EnvironmentFile=/opt/crypto-bot/.env
+ExecStart=/opt/crypto-bot/.venv/bin/python -m workers.trading_worker
+Restart=always
+RestartSec=10
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/crypto-bot/var
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

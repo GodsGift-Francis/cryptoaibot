@@ -1,0 +1,27 @@
+[Unit]
+Description=Crypto Bot - reconciliation worker (Binance user-data WebSocket + REST reconciliation)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cryptobot
+Group=cryptobot
+WorkingDirectory=/opt/crypto-bot
+EnvironmentFile=/opt/crypto-bot/.env
+ExecStart=/opt/crypto-bot/.venv/bin/python -m workers.reconciliation_worker
+# PAPER mode: the worker exits 0 immediately (not needed); on-failure keeps it from looping.
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/crypto-bot/var
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
