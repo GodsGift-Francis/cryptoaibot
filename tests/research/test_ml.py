@@ -19,8 +19,11 @@ def market(seed, amp, n=9 * 730):
     c = 30000 * np.exp(np.cumsum(drift + rng.normal(0, 0.006, n)))
     o = np.concatenate([[c[0]], c[:-1]])
     ts = pd.date_range("2026-01-01", periods=n, freq="1h", tz="UTC")
+    vol = rng.uniform(1, 10, n)
     return pd.DataFrame({"timestamp": ts, "open": o, "high": np.maximum(o, c) * 1.002, "low": np.minimum(o, c) * 0.998,
-                         "close": c, "volume": rng.uniform(1, 10, n)})
+                         "close": c, "volume": vol, "quote_volume": vol * c,
+                         "trades": rng.integers(50, 500, n).astype(float),
+                         "taker_base": vol * rng.uniform(0.3, 0.7, n)})
 
 
 @pytest.fixture(scope="module")
@@ -193,3 +196,45 @@ def test_walk_forward_never_trains_on_labels_that_reach_the_period_it_predicts(p
         else:
             last_fit = ev_
     assert checked >= 6                                  # validation + test predictions across folds
+
+
+def test_order_flow_features_are_used_and_fail_closed(planted):
+    df, X = planted
+    assert {"taker_buy_ratio", "taker_ratio_24", "taker_ratio_delta", "trades_z", "avg_trade_size_z",
+            "quote_vol_z"} <= set(mf.FEATURES)
+    assert X["taker_buy_ratio"].dropna().between(0, 1).all()
+    assert X["taker_ratio_delta"].dropna().abs().max() > 0          # actually varies, not a constant
+    with pytest.raises(mf.MissingOrderFlow):                        # plain ccxt OHLCV must be refused
+        mf.window_features(df[mf.RAW].iloc[-299:], st.cfg_copy())
+
+
+def test_live_klines_carry_order_flow_columns_with_fallback():
+    """data_fetcher must return the raw Binance columns the features need, and degrade gracefully."""
+    import data_fetcher
+
+    rows = [[1735689600000 + i * 3600000, "100", "101", "99", "100.5", "10", 0, "1005", "42", "6", "603", "0"]
+            for i in range(3)]
+
+    class Binance:
+        timeframes = {"1h": "1h"}
+        market_id = staticmethod(lambda s: "BTCUSDT")
+        publicGetKlines = staticmethod(lambda params: rows)
+
+    df = data_fetcher.fetch_ohlcv(Binance(), "BTC/USDT", "1h", limit=3)
+    assert list(df.columns) == ["timestamp", "open", "high", "low", "close", "volume", "quote_volume", "trades", "taker_base"]
+    assert df["taker_base"].iloc[0] == 6.0 and df["trades"].iloc[0] == 42.0
+
+    class OtherExchange:
+        timeframes = {"1h": "1h"}
+        market_id = staticmethod(lambda s: "BTCUSDT")
+
+        @staticmethod
+        def publicGetKlines(params):
+            raise AttributeError("not binance")
+
+        @staticmethod
+        def fetch_ohlcv(symbol, timeframe, limit):
+            return [[r[0]] + [float(x) for x in r[1:6]] for r in rows]
+
+    df2 = data_fetcher.fetch_ohlcv(OtherExchange(), "BTC/USDT", "1h", limit=3)
+    assert list(df2.columns) == ["timestamp", "open", "high", "low", "close", "volume"]

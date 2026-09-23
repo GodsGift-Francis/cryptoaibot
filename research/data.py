@@ -60,7 +60,7 @@ def parse_klines_csv(raw: bytes) -> pd.DataFrame:
     df = df.iloc[:, :12]
     df.columns = COLS
     out = pd.DataFrame({"timestamp": to_utc(df["open_time"])})
-    for c in ("open", "high", "low", "close", "volume"):
+    for c in ("open", "high", "low", "close", "volume", "quote_volume", "trades", "taker_base"):
         out[c] = df[c].astype(float).values
     return out
 

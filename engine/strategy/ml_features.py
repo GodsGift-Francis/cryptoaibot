@@ -20,13 +20,31 @@ FEATURES = [
     "dist_ema_fast", "dist_ema_mid", "dist_ema_slow", "ema_stack",
     "bb_pctb", "atr_pct", "range_pct", "volume_z",
     "hour_sin", "hour_cos", "dow_sin", "dow_cos", "v1_score",
+    # order flow: who is hitting the market, not just where price went
+    "taker_buy_ratio", "taker_ratio_24", "taker_ratio_delta", "trades_z", "avg_trade_size_z", "quote_vol_z",
 ]
-FEATURE_VERSION = "f1"
+FEATURE_VERSION = "f2"
 RAW = ["timestamp", "open", "high", "low", "close", "volume"]
+FLOW = ["quote_volume", "trades", "taker_base"]        # from Binance raw klines; ccxt fetch_ohlcv drops these
+
+
+class MissingOrderFlow(RuntimeError):
+    """Raised when order-flow columns are absent. Fail closed: a model trained with them must never
+    run on data without them (the engine would silently feed it wrong inputs)."""
+
+
+def _z(series: np.ndarray, window: int) -> float:
+    tail = series[-window:]
+    sd = tail.std(ddof=1)
+    return float((series[-1] - tail.mean()) / sd) if sd > 0 else 0.0
 
 
 def window_features(window: pd.DataFrame, cfg) -> dict:
+    missing = [c for c in FLOW if c not in window.columns]
+    if missing:
+        raise MissingOrderFlow(f"candles lack order-flow columns {missing}; Binance raw klines are required")
     raw = window[RAW].reset_index(drop=True)
+    flow = window[FLOW].reset_index(drop=True).astype(float)
     ind = indicators.add_all_indicators(raw, cfg)
     last = ind.iloc[-1]
     c = raw["close"].to_numpy(float)
@@ -62,4 +80,23 @@ def window_features(window: pd.DataFrame, cfg) -> dict:
         "hour_sin": math.sin(2 * math.pi * hour / 24), "hour_cos": math.cos(2 * math.pi * hour / 24),
         "dow_sin": math.sin(2 * math.pi * dow / 7), "dow_cos": math.cos(2 * math.pi * dow / 7),
         "v1_score": float(v1_strategy.analyze(ind, "BTC/USDT", cfg).score),
+        **_flow_features(flow, vol),
+    }
+
+
+def _flow_features(flow: pd.DataFrame, vol: np.ndarray) -> dict:
+    """Aggressive-buy share and activity levels. taker_base = volume bought by the aggressor side,
+    so taker_base / volume near 1 means buyers are lifting offers; near 0 means sellers are hitting bids."""
+    taker = flow["taker_base"].to_numpy(float)
+    trades = flow["trades"].to_numpy(float)
+    quote = flow["quote_volume"].to_numpy(float)
+    ratio = np.divide(taker, vol, out=np.full(len(vol), 0.5), where=vol > 0)
+    avg_size = np.divide(quote, trades, out=np.zeros(len(trades)), where=trades > 0)
+    return {
+        "taker_buy_ratio": float(ratio[-1]),
+        "taker_ratio_24": float(ratio[-24:].mean()),
+        "taker_ratio_delta": float(ratio[-24:].mean() - ratio[-72:].mean()),
+        "trades_z": _z(trades, 72),
+        "avg_trade_size_z": _z(avg_size, 72),
+        "quote_vol_z": _z(quote, 72),
     }

@@ -37,11 +37,28 @@ def get_exchange(cfg):
 
 
 def fetch_ohlcv(exchange, symbol: str, timeframe: str, limit: int = 300) -> pd.DataFrame:
-    """Returns OHLCV candles as a DataFrame: timestamp, open, high, low, close, volume."""
-    raw = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
-    df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    return df
+    """Returns candles as a DataFrame: timestamp, open, high, low, close, volume.
+
+    On Binance it uses the raw /klines endpoint, which also carries order-flow columns
+    (quote_volume, trades, taker_base, taker_quote) that ccxt's fetch_ohlcv discards. Those extra
+    columns are what the AI layer's order-flow features need; indicators ignore them.
+    Any exchange or failure falls back to the plain 6-column fetch_ohlcv.
+    """
+    try:
+        raw = exchange.publicGetKlines({"symbol": exchange.market_id(symbol),
+                                        "interval": exchange.timeframes[timeframe], "limit": limit})
+        df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume", "close_time",
+                                        "quote_volume", "trades", "taker_base", "taker_quote", "ignore"])
+        df = df[["timestamp", "open", "high", "low", "close", "volume", "quote_volume", "trades", "taker_base"]]
+        for c in df.columns[1:]:
+            df[c] = df[c].astype(float)
+        df["timestamp"] = pd.to_datetime(df["timestamp"].astype("int64"), unit="ms")
+        return df
+    except Exception:  # noqa: BLE001 - not Binance, or the raw endpoint is unavailable
+        raw = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        return df
 
 
 def get_global_market_data() -> dict | None:

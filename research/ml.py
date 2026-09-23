@@ -49,7 +49,11 @@ def feature_matrix(df: pd.DataFrame, cfg=None, cache: bool = True) -> pd.DataFra
     path = os.path.join(st.CACHE_DIR, f"features_{key}.pkl")
     if cache and os.path.exists(path):
         return pd.read_pickle(path)
-    raw = df[mf.RAW].reset_index(drop=True)
+    missing = [c for c in mf.FLOW if c not in df.columns]
+    if missing:
+        raise SystemExit(f"This data file predates the order-flow features (missing {missing}).\n"
+                         "Re-download it once:  python -m research --months 36 --symbols BTCUSDT")
+    raw = df[mf.RAW + mf.FLOW].reset_index(drop=True)
     rows = [None] * len(raw)
     for i in range(w - 1, len(raw)):
         rows[i] = mf.window_features(raw.iloc[i - w + 1:i + 1], cfg)
@@ -229,6 +233,7 @@ def evaluate(symbol="BTCUSDT", loader=rdata.load, out_dir=ev.OUT_DIR, seeds=200)
     artifact = train_final(dev, X, y, warm, chosen, results[chosen]["threshold"], out_dir) if chosen else None
 
     out = {"generated_at": datetime.now(timezone.utc).isoformat(), "symbol": symbol, "horizon": HORIZON, "edge": EDGE,
+           "dev_months": len(months),
            "features": mf.FEATURES, "pooled_auc": pooled_auc, "canary_auc": canary_auc, "folds": folds,
            "modes": results, "v1_default_oos": {**v1_oos.metrics, "monthly_sharpe": v1_oos_sharpe},
            "competitors_oos": comp_oos, "best_competitor": best_comp, "chosen_mode": chosen, "artifact": artifact,
@@ -316,7 +321,8 @@ def report(r: dict) -> str:
     if r["artifact"]:
         lines += ["", f"Model saved: `{r['artifact']['path']}`", f"SHA-256: `{r['artifact']['sha256']}`",
                   "Pin both in the engine `.env` (see research/README.md) only after the holdout passes."]
-    lines += ["", "One year of data: provisional. A GO earns a forward test in PAPER/TESTNET, not live money."]
+    lines += ["", f"Development data covers {r['dev_months']} months. Provisional: a GO earns a forward test "
+              "in PAPER/TESTNET, not live money."]
     return "\n".join(lines) + "\n"
 
 

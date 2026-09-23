@@ -217,6 +217,7 @@ def evaluate(symbols=("BTCUSDT", "ETHUSDT", "SOLUSDT"), loader=rdata.load, out_d
     result = {
         "generated_at": datetime.now(timezone.utc).isoformat(), "symbol": main,
         "dev_period": [str(dev.timestamp.iloc[0]), str(dev.timestamp.iloc[-1])],
+        "dev_months": len(month_bounds(dev)),
         "holdout_period": [str(hold.timestamp.iloc[0]), str(hold.timestamp.iloc[-1])] if len(hold) else None,
         "costs": asdict(COSTS), "v1_default": v1.metrics, "v1_default_random_percentile": v1_pct,
         "competitors": {k: {**v.metrics, "monthly_sharpe": _monthly_sharpe(v)} for k, v in comp.items()},
@@ -307,7 +308,8 @@ def report(r: dict) -> str:
                      f"{pct(o['chosen']['total_return'])} vs buy & hold {pct(o['buy_hold']['total_return'])}"))
     lines += ["", "## Gates", ""] + [f"- {'PASS' if v else 'FAIL'} — {k}" for k, v in r["gates"].items()]
     lines += ["", f"**Verdict: {r['verdict']}**", "",
-              "One year of data: treat every number above as provisional. A GO here earns a forward test, not live money."]
+              f"Development data covers {r['dev_months']} months ({r['dev_period'][0][:10]} to {r['dev_period'][1][:10]}). "
+              "Treat every number above as provisional; a GO earns a forward test, not live money."]
     return "\n".join(lines) + "\n"
 
 
